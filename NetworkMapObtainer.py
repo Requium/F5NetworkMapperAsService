@@ -3,10 +3,16 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import json
 import urllib3
 import time
+from flask import Flask, jsonify
 
 
 
 
+app = Flask(__name__)
+
+@app.route('/f5networkMap', methods=['GET'])
+def index():
+    return getF5NetworkMap()
 
 urllib3.disable_warnings()
 
@@ -68,6 +74,7 @@ class PoolMember():
         self.operationalState = "unset"
         self.dataCenter = "unset"
         self.dataCenterZone = "unset"
+        self.VirtualServer = "unset"
 
 
 class Pool():
@@ -444,7 +451,7 @@ class F5_LoadBalancer():
             if virtualServer.defaultPool:
                 tempPoolDict = {"poolOrigin": "virtualServerDefaultPool","name": virtualServer.defaultPool.name,"partition": virtualServer.defaultPool.partition, "loadBalancingMethod": virtualServer.defaultPool.loadBalancingMode, "members":[]}
                 for member in virtualServer.defaultPool.members:
-                    tempPoolDict["members"].append({"ipAddress": member.ipAddress, "memberPort": member.port,"adminState": member.adminState,"operationalState": member.operationalState})
+                    tempPoolDict["members"].append({"ipAddress": member.ipAddress, "memberPort": member.port,"adminState": member.adminState,"operationalState": member.operationalState,"VSName": virtualServer.name})
                 tempVirtualServerDict["pools"].append(tempPoolDict)
             
             for iRule in virtualServer.iRules:
@@ -452,7 +459,7 @@ class F5_LoadBalancer():
                     for pool in iRule.pools:
                         tempPoolDict = {"poolOrigin": "iRule", "iRuleName": iRule.name, "iRulePartition": iRule.partition,"name": pool.name,"partition": pool.partition, "loadBalancingMethod": pool.loadBalancingMode, "members":[]}
                         for member in pool.members:
-                            tempPoolDict["members"].append({"ipAddress": member.ipAddress, "memberPort": member.port,"adminState": member.adminState,"operationalState": member.operationalState})
+                            tempPoolDict["members"].append({"ipAddress": member.ipAddress, "memberPort": member.port,"adminState": member.adminState,"operationalState": member.operationalState,"VSName": virtualServer.name})
                         tempVirtualServerDict["pools"].append(tempPoolDict)
             for policy in virtualServer.policies:
                 for rule in policy.rules:
@@ -461,25 +468,24 @@ class F5_LoadBalancer():
                             if action.pool:
                                 tempPoolDict = {"poolOrigin": "policy", "policyName": policy.name, "policyPartition": policy.partition,"ruleName": rule.name,"name": action.pool.name, "partition": action.pool.partition, "loadBalancingMethod": action.pool.loadBalancingMode, "members":[]}
                                 for member in action.pool.members:
-                                    tempPoolDict["members"].append({"ipAddress": member.ipAddress, "memberPort": member.port,"adminState": member.adminState,"operationalState": member.operationalState})
+                                    tempPoolDict["members"].append({"ipAddress": member.ipAddress, "memberPort": member.port,"adminState": member.adminState,"operationalState": member.operationalState,"VSName": virtualServer.name})
                                 tempVirtualServerDict["pools"].append(tempPoolDict)
             returnedJson["VirtualServers"].append(tempVirtualServerDict)
             del tempVirtualServerDict
-        jsonToWrite = json.dumps(returnedJson)
-        fileWriter(nameOfFile, jsonToWrite)
+        output = json.dumps(returnedJson)
+        return jsonify(json.loads(output))
+        #fileWriter(nameOfFile, jsonToWrite)
 
 def fileWriter(where,what):
     Filer = open(where,"w")
     Filer.write(what)
     Filer.close()
 
-if __name__ == "__main__":
+def getF5NetworkMap():
     startTime = int(time.time())
-    sampleF5 = F5_LoadBalancer("F5_ManagementIpAddress","Username","Password")
+    sampleF5 = F5_LoadBalancer("F5NetworkIP","user","password")
     sampleF5.discovery(virtualServerSubCollectionsExpand=True)
-    sampleF5.buildJsonNetworkMap()
-
-    
+       
     for vs in sampleF5.virtualServers:
         print(vs.name + " partition " + vs.partition)
         if vs.defaultPool:
@@ -510,3 +516,7 @@ if __name__ == "__main__":
     for error in sampleF5.errors:
         print(error)
     print("Total time is consumed: " + str(int(time.time())-startTime))
+    return (sampleF5.buildJsonNetworkMap())
+
+if __name__ == '__main__':
+    app.run(port=5000)
